@@ -1,0 +1,15 @@
+ÉLECTRICITÉ : LA LOI D'OHM
+
+Tension électrique (U) : grandeur qui se mesure en volts (V) avec un voltmètre branché en dérivation.
+Intensité (I) : débit d'électrons, mesurée en ampères (A) avec un ampèremètre branché en série.
+Résistance (R) : capacité d'un dipôle à s'opposer au passage du courant, en ohms (Ω).
+
+Loi d'Ohm : U = R × I
+La tension aux bornes d'une résistance est proportionnelle à l'intensité du courant qui la traverse.
+
+Puissance électrique : P = U × I
+La puissance s'exprime en watts (W).
+Énergie : E = P × t
+L'énergie s'exprime en joules (J) ou en kilowattheures (kWh).
+
+Dans un circuit en série, l'intensité est la même partout. Dans un circuit en dérivation, la tension est la même aux bornes de chaque branche.

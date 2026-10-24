@@ -13,8 +13,8 @@ Application Android de révision : à partir de tes cours (texte, PDF, photo, di
 | | |
 |---|---|
 | 📥 **Importer un cours** | Coller du texte, fichier `.txt`/`.md`/`.html`, **PDF** (même scanné), **photo** du cahier ou du manuel (lecture sur le téléphone), **dictée vocale**, lien + transcription de **vidéo / podcast**, ou « Partager vers Revisator » depuis une autre app |
-| 📋 **Fiche de révision** | Résumé, points clés par partie, définitions, formules, dates et chiffres, « À retenir absolument » ; partageable |
-| 🔑 **Mots-clés** | Terme + définition, en flashcards avec **répétition espacée** (boîtes de Leitner) |
+| 📋 **Fiche de révision** | Suit le plan du cours (titres, listes, formules, code), met les définitions en évidence, chronologie triée, « À retenir absolument » ; partageable |
+| 🃏 **Cartes** | Uniquement des questions qui ont une vraie réponse : définitions, formules, syntaxes, listes à connaître, dates, phrases à compléter — en flashcards avec **répétition espacée** (boîtes de Leitner) |
 | 🧮 **Syntaxes** | Formules, équations et code détectés automatiquement |
 | ❓ **Quiz** | QCM, vrai/faux, textes à trous, avec explication de chaque réponse |
 | 📝 **Examen blanc** | Questions ouvertes + QCM, chronomètre, **note sur 20** et liste de **ce qui n'est pas compris** |
@@ -31,7 +31,7 @@ Application Android de révision : à partir de tes cours (texte, PDF, photo, di
 
 ### 100 % hors-ligne, sans clé ni compte
 
-Tout fonctionne directement sur le téléphone, sans Internet : analyse du cours (titres, définitions du type « X : … », « X est … », « On appelle X … », mots-clés, formules), lecture des photos et PDF scannés (OCR Tesseract embarqué, français et anglais), correction des examens, prof qui répond aux questions.
+Tout fonctionne directement sur le téléphone, sans Internet : reconstruction du cours (y compris les lignes coupées des photos et PDF), repérage des titres, listes, formules, code, dates et définitions (« X : … », « X est un… », « On appelle X… », « X désigne… », « X est appelé Y »…), lecture des photos et PDF scannés (OCR Tesseract embarqué, français et anglais), correction des examens, prof qui répond aux questions.
 
 *Option avancée, facultative :* une clé API Anthropic peut être ajoutée dans *Profil › Options avancées* pour des fiches et corrections rédigées par Claude. Sans clé, rien ne manque.
 
@@ -49,6 +49,7 @@ android/              coque native (WebView + pont voix/dictée/partage)
 build-apk.sh          construit dist/Revisator.apk
 ```
 
+- Vérifier le générateur : `node tests/qualite.mjs` (contrôles automatiques) et `node tests/apercu.mjs` (aperçu lisible de ce qui est généré pour chaque cours de `tests/cours/`)
 - Tester dans un navigateur : `cd www && python3 -m http.server` puis http://localhost:8000
 - Reconstruire les dépendances JS : `cd tools/vendor && npm ci && npm run build`
 - Construire l'APK (Debian/Ubuntu) :

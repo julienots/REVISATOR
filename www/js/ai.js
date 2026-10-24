@@ -84,7 +84,7 @@ export async function generatePackAI(title, text) {
     createdAt: Date.now(),
     summary: p.summary || "",
     fiche: p.fiche || [],
-    keywords: (p.keywords || []).map((k) => ({ id: id(), term: k.term, def: k.def })),
+    keywords: (p.keywords || []).map((k) => ({ id: id(), term: k.term, def: k.def, kind: "def" })),
     syntaxes: p.syntaxes || [],
     retenir: p.retenir || [],
     dates: p.dates || [],

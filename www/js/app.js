@@ -1,5 +1,5 @@
 import * as store from "./store.js";
-import { generatePack, gradeOpen, feynmanCheck, answerQuestion, isQuestion, simplify, mnemonic } from "./nlp.js";
+import { generatePack, gradeOpen, feynmanCheck, answerQuestion, isQuestion, simplify, mnemonic, PACK_VERSION } from "./nlp.js";
 import * as ai from "./ai.js";
 import * as audio from "./audio.js";
 import * as ocr from "./ocr.js";
@@ -325,7 +325,7 @@ async function pdfText(buf) {
 const TABS = [
   ["fiche", "📋 Fiche"],
   ["apprendre", "🎯 S'entraîner"],
-  ["mots", "🔑 Mots-clés"],
+  ["mots", "🃏 Cartes"],
   ["syntaxes", "🧮 Syntaxes"],
   ["texte", "📄 Cours"],
 ];
@@ -338,7 +338,7 @@ routes.course = (id, tab = "fiche") => {
   const m = store.mastery(c);
   view.innerHTML = `
     <section class="card course-head">
-      <div class="grow"><div class="course-ico big">${esc(c.emoji)}</div><h2>${esc(c.title)}</h2><p class="muted">${esc(c.subject)} · ${p.keywords.length} mots-clés · ${p.quiz.length} questions${p.source === "ai" ? " · ✨ IA" : ""}</p></div>
+      <div class="grow"><div class="course-ico big">${esc(c.emoji)}</div><h2>${esc(c.title)}</h2><p class="muted">${esc(c.subject)} · ${p.keywords.length} cartes · ${p.quiz.length} questions${p.source === "ai" ? " · ✨ IA" : ""}</p></div>
       ${ring(m, 80, "acquis")}
     </section>
     <div class="tabs" role="tablist">${TABS.map(([k, l]) => `<button role="tab" class="${tab === k ? "on" : ""}" data-go="course/${id}/${k}">${l}</button>`).join("")}</div>
@@ -347,26 +347,54 @@ routes.course = (id, tab = "fiche") => {
   body.innerHTML = courseTab(c, tab);
 };
 
+const CARD_KINDS = { def: "🔑 Définitions", formula: "🧮 Formules", code: "💻 Syntaxes", list: "📝 Listes à connaître", date: "📅 Dates", cloze: "✏️ Phrases à compléter" };
+const CARD_PROMPT = { def: "Que signifie…", formula: "Quelle est la formule ?", code: "Comment fait-on ?", list: "Cite les éléments", date: "Que s'est-il passé ?", cloze: "Complète la phrase" };
+
+// Un point de fiche : texte simple (IA) ou objet structuré (générateur local).
+function renderPoint(x) {
+  if (typeof x === "string") return `<li>${esc(x)}</li>`;
+  if (x.k === "def" && x.term) return `<li><b>${esc(x.term)}</b> : ${esc(x.t.slice(x.term.length).replace(/^\s*:\s*/, ""))}</li>`;
+  if (x.k === "list") return `<li>${esc(x.t)}<ul>${x.sub.map((y) => `<li>${esc(y)}</li>`).join("")}</ul></li>`;
+  if (x.k === "formula" || x.k === "code") return `<li class="formula">${x.term ? `<span>${esc(x.term)} :</span>` : ""}<pre>${esc(x.t)}</pre></li>`;
+  return `<li>${esc(x.t)}</li>`;
+}
+
+const fmtDate = (x) => {
+  const m = String(x).match(/^(.{3,25}?) — (.+)$/);
+  return m ? `<b>${esc(m[1])}</b> — ${esc(m[2])}` : esc(x);
+};
+
+const pointPlain = (x) => (typeof x === "string" ? x : [x.term && x.k !== "def" ? `${x.term} : ${x.t}` : x.t, ...(x.sub || []).map((y) => "   – " + y)].filter(Boolean).join("\n"));
+
 function courseTab(c, tab) {
   const p = c.pack;
   const id = c.id;
-  if (tab === "fiche")
+  if (tab === "fiche") {
+    const local = p.source === "local" && p.version >= 2;
     return `<article class="card fiche">
       ${p.summary ? `<p class="summary">${esc(p.summary)}</p>` : ""}
-      ${p.fiche.map((s) => `<h3>${esc(s.title)}</h3><ul>${s.points.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`).join("")}
-      ${p.keywords.length ? `<h3>🔑 Définitions</h3><dl>${p.keywords.slice(0, 12).map((k) => `<dt>${esc(k.term)}</dt><dd>${esc(k.def)}</dd>`).join("")}</dl>` : ""}
-      ${p.syntaxes.length ? `<h3>🧮 Formules & syntaxes</h3>${p.syntaxes.map((s) => `<pre>${esc(s.code)}</pre>`).join("")}` : ""}
-      ${p.dates?.length ? `<h3>📅 Dates & chiffres</h3><ul>${p.dates.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${p.fiche.map((s, i) => `${s.title ? `<h3>${esc(s.title)}</h3>` : i ? "<hr>" : ""}<ul>${s.points.map(renderPoint).join("")}</ul>`).join("")}
+      ${!local && p.keywords.length ? `<h3>🔑 Définitions</h3><dl>${p.keywords.slice(0, 12).map((k) => `<dt>${esc(k.term)}</dt><dd>${esc(k.def)}</dd>`).join("")}</dl>` : ""}
+      ${!local && p.syntaxes.length ? `<h3>🧮 Formules & syntaxes</h3>${p.syntaxes.map((s) => `<pre>${esc(s.code)}</pre>`).join("")}` : ""}
+      ${p.dates?.length > 1 || (!local && p.dates?.length) ? `<h3>📅 ${local ? "Chronologie" : "Dates & chiffres"}</h3><ul class="timeline">${p.dates.map((x) => `<li>${fmtDate(x)}</li>`).join("")}</ul>` : ""}
       ${p.retenir?.length ? `<div class="retenir"><h3>⭐ À retenir absolument</h3><ul>${p.retenir.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
-      ${p.mnemonics?.length ? `<h3>💡 Moyens mnémotechniques</h3><ul>${p.mnemonics.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${p.mnemonics?.length ? `<h3>💡 Moyen mnémotechnique</h3>${p.mnemonics.map((x) => `<p class="mnemo">${esc(x).replace(/\n/g, "<br>")}</p>`).join("")}` : ""}
     </article>
     <div class="actions">
       <button class="btn" data-go="podcast/${id}">🎧 Écouter en podcast</button>
       <button class="btn ghost" data-action="share-fiche" data-id="${id}">📤 Partager la fiche</button>
     </div>`;
-  if (tab === "mots")
-    return `<div class="card">${p.keywords.length ? p.keywords.map((k) => `<div class="kw"><div class="row"><b>${esc(k.term)}</b><span class="box-badge" title="Boîte de Leitner">${"●".repeat(k.box || 0)}${"○".repeat(5 - (k.box || 0))}</span></div><p>${esc(k.def)}</p></div>`).join("") : `<p class="muted">Aucun mot-clé détecté. Astuce : écris tes définitions sous la forme « Mot : définition ».</p>`}</div>
-      <button class="btn block" data-go="flash/${id}">🃏 Réviser en flashcards</button>`;
+  }
+  if (tab === "mots") {
+    const groups = {};
+    for (const k of p.keywords) (groups[k.kind || "def"] ||= []).push(k);
+    const body = Object.entries(CARD_KINDS)
+      .filter(([kind]) => groups[kind])
+      .map(([kind, label]) => `<h3>${label}</h3>${groups[kind].map((k) => `<div class="kw"><div class="row"><b>${esc(k.term)}</b><span class="box-badge" title="Niveau de mémorisation">${"●".repeat(k.box || 0)}${"○".repeat(5 - (k.box || 0))}</span></div><p>${kind === "cloze" ? `<b>${esc(k.answer)}</b>` : esc(k.def).replace(/\n/g, "<br>")}</p></div>`).join("")}`)
+      .join("");
+    return `<div class="card cards-list">${body || `<p class="muted">Aucune carte : ton cours est peut-être très court. Astuce : écris tes définitions sous la forme « Mot : définition ».</p>`}</div>
+      ${p.keywords.length ? `<button class="btn block" data-go="flash/${id}">🃏 Réviser ces ${p.keywords.length} cartes</button>` : ""}`;
+  }
   if (tab === "syntaxes")
     return `<div class="card">${p.syntaxes.length ? p.syntaxes.map((s) => `<div class="syn"><b>${esc(s.label)}</b>${s.note ? `<span class="muted small"> · ${esc(s.note)}</span>` : ""}<pre>${esc(s.code)}</pre></div>`).join("") : `<p class="muted">Aucune formule ni syntaxe détectée dans ce cours.</p>`}</div>`;
   if (tab === "texte")
@@ -412,14 +440,14 @@ routes.flash = (id, which) => {
     const k = cards[i];
     view.innerHTML = `<div class="progress-top">${bar(pct(i, cards.length))}<span class="muted">${i + 1}/${cards.length}</span></div>
       <button class="flashcard" id="fc" aria-label="Retourner la carte">
-        <div class="face front"><small class="muted">Te souviens-tu de…</small><h2>${esc(k.term)}</h2><small class="muted">Touche pour retourner</small></div>
-        <div class="face back"><small class="muted">${esc(k.term)}</small><p>${esc(k.def)}</p></div>
+        <div class="face front"><small class="muted">${CARD_PROMPT[k.kind || "def"]}</small><h2 class="${k.term.length > 60 ? "long" : ""}">${esc(k.term)}</h2><small class="muted">Touche pour retourner</small></div>
+        <div class="face back"><small class="muted">${esc(k.kind === "cloze" ? "Réponse" : k.term)}</small>${k.kind === "cloze" ? `<h2>${esc(k.answer)}</h2><p class="small">${esc(k.src)}</p>` : `<p class="${/\n/.test(k.def) || k.kind === "formula" || k.kind === "code" ? "pre" : ""}">${esc(k.def)}</p>`}</div>
       </button>
       <div class="actions two" id="fc-act" hidden>
         <button class="btn bad" data-r="0">😕 À revoir</button>
         <button class="btn good" data-r="1">😎 Je savais</button>
       </div>
-      <button class="btn ghost block" data-action="speak" data-text="${esc(k.term + ". " + k.def)}">🔊 Écouter</button>`;
+      <button class="btn ghost block" data-action="speak" data-text="${esc(k.kind === "cloze" ? k.src : k.term + ". " + k.def)}">🔊 Écouter</button>`;
     $("#fc").onclick = () => {
       $("#fc").classList.add("flipped");
       $("#fc-act").hidden = false;
@@ -430,7 +458,12 @@ routes.flash = (id, which) => {
       const good = r.dataset.r === "1";
       store.reviewCard(k, good);
       if (good) ok++;
-      else store.addMistake({ courseId: id, question: `Que signifie « ${k.term} » ?`, correct: k.def, given: "(oublié)", explain: k.def, qref: { type: "open", q: `Que signifie « ${k.term} » ?`, expected: k.def.split(/\s+/).filter((w) => w.length > 4).slice(0, 6), model: k.def } });
+      else {
+        const question = !k.kind || k.kind === "def" ? `Que signifie « ${k.term} » ?` : k.term;
+        const answer = k.kind === "cloze" ? k.answer : k.def;
+        const expected = k.kind === "cloze" ? [k.answer] : k.def.split(/[\s,()]+/).filter((w) => w.length > 4 || /\d/.test(w)).slice(0, 6);
+        store.addMistake({ courseId: id, question, correct: answer, given: "(oublié)", explain: k.kind === "cloze" ? k.src : k.def, qref: { type: "open", q: question, expected, model: answer } });
+      }
       i++;
       show();
     };
@@ -744,7 +777,7 @@ routes.chat = (id) => {
   setTitle(t.name);
   c.chat ||= [];
   const aiOn = !!S().apiKey;
-  const hello = `Bonjour ! Je suis ${t.name}. Pose-moi une question sur « ${c.title} » (par exemple « c'est quoi ${c.pack.keywords[0]?.term?.toLowerCase() || "…"} ? »), ou demande-moi de t'interroger.`;
+  const hello = `Bonjour ! Je suis ${t.name}. Pose-moi une question sur « ${c.title} » (par exemple « c'est quoi ${(c.pack.notions?.[0] || c.pack.keywords.find((k) => !k.kind || k.kind === "def")?.term || "…").toLowerCase()} ? »), ou demande-moi de t'interroger.`;
   const renderMsgs = () =>
     [{ role: "assistant", content: hello }, ...c.chat]
       .map((m) => `<div class="msg ${m.role}">${m.role === "assistant" ? `<span class="who">${t.emoji}</span>` : ""}<div>${esc(m.content).replace(/\n/g, "<br>")}</div></div>`)
@@ -770,7 +803,14 @@ routes.chat = (id) => {
   // Question posée par le prof, en attente de la réponse de l'élève (mode hors-ligne).
   let pending = null;
   const askLocal = () => {
-    const q = shuffle([...c.pack.exam, ...c.pack.keywords.map((k) => ({ q: `Que signifie « ${k.term} » ?`, expected: k.def.split(/\s+/).filter((w) => w.length > 4).slice(0, 6), model: k.def }))])[0];
+    const q = shuffle([
+      ...c.pack.exam,
+      ...c.pack.keywords.map((k) =>
+        k.kind === "cloze"
+          ? { q: `Complète : ${k.term}`, expected: [k.answer], model: k.src }
+          : { q: !k.kind || k.kind === "def" ? `Que signifie « ${k.term} » ?` : k.term, expected: k.def.split(/[\s,()]+/).filter((w) => w.length > 4 || /\d/.test(w)).slice(0, 6), model: k.def }
+      ),
+    ])[0];
     if (!q) return say("Ton cours est trop court pour que je t'interroge. Ajoute du contenu !");
     pending = q;
     say(q.q);
@@ -1041,7 +1081,7 @@ routes.settings = () => {
     <section class="card"><h3>💾 Mes données</h3>
       <div class="actions"><button class="btn ghost" data-action="export">📤 Exporter</button><label class="btn ghost">📥 Importer<input type="file" id="import-in" accept=".json,application/json" hidden></label></div>
       <button class="btn danger ghost block" data-action="reset">Tout effacer</button></section>
-    <p class="muted small center">Revisator 1.1 · 100 % hors-ligne · fait pour réviser mieux, pas plus.</p>`;
+    <p class="muted small center">Revisator 1.2 · 100 % hors-ligne · fait pour réviser mieux, pas plus.</p>`;
 
   const saveS = () => store.save();
   $("#set-name").onchange = (e) => ((s.name = e.target.value.trim()), saveS());
@@ -1108,9 +1148,10 @@ function ficheText(c) {
   return [
     `📋 ${c.title}${c.subject ? " (" + c.subject + ")" : ""}`,
     p.summary,
-    ...p.fiche.map((s) => `\n■ ${s.title}\n${s.points.map((x) => "• " + x).join("\n")}`),
-    p.keywords.length ? "\n🔑 Définitions\n" + p.keywords.map((k) => `• ${k.term} : ${k.def}`).join("\n") : "",
-    p.syntaxes.length ? "\n🧮 Formules\n" + p.syntaxes.map((s) => s.code).join("\n") : "",
+    ...p.fiche.map((s) => `\n${s.title ? "■ " + s.title + "\n" : ""}${s.points.map((x) => "• " + pointPlain(x)).join("\n")}`),
+    p.version >= 2 ? "" : p.keywords.length ? "\n🔑 Définitions\n" + p.keywords.map((k) => `• ${k.term} : ${k.def}`).join("\n") : "",
+    p.version >= 2 ? "" : p.syntaxes.length ? "\n🧮 Formules\n" + p.syntaxes.map((s) => s.code).join("\n") : "",
+    p.dates?.length > 1 ? "\n📅 Chronologie\n" + p.dates.map((x) => "• " + x).join("\n") : "",
     p.retenir?.length ? "\n⭐ À retenir\n" + p.retenir.map((x) => "• " + x).join("\n") : "",
     "\n— Généré avec Revisator",
   ]
@@ -1239,5 +1280,22 @@ window.onSharedText = (text) => {
 };
 
 store.load();
+// Les fiches créées par une ancienne version du générateur sont refaites automatiquement.
+(() => {
+  const old = store.get().courses.filter((c) => c.pack?.source === "local" && (c.pack.version || 1) < PACK_VERSION);
+  for (const c of old) {
+    const prev = new Map(c.pack.keywords.map((k) => [k.term.toLowerCase(), k]));
+    c.pack = generatePack(c.text, c.title);
+    c.pack.keywords = c.pack.keywords.map((k) => {
+      const p = prev.get(k.term.toLowerCase());
+      return p ? { ...k, box: p.box, due: p.due, seen: p.seen, right: p.right } : k;
+    });
+    c.chat = [];
+  }
+  if (old.length) {
+    store.save();
+    setTimeout(() => toast(`✨ ${old.length > 1 ? "Tes fiches ont été refaites" : "Ta fiche a été refaite"} avec le nouveau générateur`, 4000), 600);
+  }
+})();
 window.addEventListener("hashchange", render);
 render();

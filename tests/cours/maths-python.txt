@@ -1,0 +1,19 @@
+Chapitre 3 : Les fonctions affines
+
+1. Définition
+Une fonction affine est une fonction de la forme f(x) = ax + b, où a et b sont deux nombres réels.
+Le nombre a est appelé coefficient directeur.
+Le nombre b est appelé ordonnée à l'origine.
+Si b = 0, la fonction est linéaire.
+
+2. Représentation graphique
+La courbe représentative d'une fonction affine est une droite.
+Le coefficient directeur se calcule avec la formule :
+a = (yB - yA) / (xB - xA)
+Si a > 0, la fonction est croissante. Si a < 0, la fonction est décroissante. Si a = 0, la fonction est constante.
+
+3. En Python
+Pour définir une fonction affine en Python, on utilise le mot-clé def :
+def f(x):
+    return 2*x + 3
+Pour afficher l'image de 5, on écrit print(f(5)).
