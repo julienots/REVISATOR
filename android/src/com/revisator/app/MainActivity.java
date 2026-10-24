@@ -1,12 +1,16 @@
 package com.revisator.app;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.ContentValues;
+import android.content.pm.PackageManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
@@ -47,6 +51,7 @@ public class MainActivity extends Activity {
     private TextToSpeech tts;
     private boolean ttsReady = false;
     private ValueCallback<Uri[]> fileCallback;
+    private Uri cameraUri;
     private String pendingShared;
 
     private static final Map<String, String> MIME = new HashMap<>();
@@ -60,6 +65,8 @@ public class MainActivity extends Activity {
         MIME.put("png", "image/png");
         MIME.put("svg", "image/svg+xml");
         MIME.put("woff2", "font/woff2");
+        MIME.put("wasm", "application/wasm");
+        MIME.put("traineddata", "application/octet-stream");
     }
 
     @Override
@@ -125,13 +132,14 @@ public class MainActivity extends Activity {
                 String[] types = params.getAcceptTypes();
                 boolean images = types.length > 0 && types[0].startsWith("image");
                 i.setType(images ? "image/*" : "*/*");
-                if (!images) {
-                    i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"text/*", "application/pdf", "application/json", "text/html"});
-                }
-                Intent chooser = Intent.createChooser(i, "Choisir un fichier");
-                if (images && params.isCaptureEnabled()) {
-                    // La galerie suffit ; l'appareil photo passe par l'app Galerie/Appareil photo.
-                    chooser = Intent.createChooser(i, "Choisir une photo du cours");
+                Intent chooser;
+                if (images) {
+                    chooser = Intent.createChooser(i, "Photo du cours");
+                    Intent cam = cameraIntent();
+                    if (cam != null) chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{cam});
+                } else {
+                    i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"text/*", "application/pdf", "application/json", "image/*"});
+                    chooser = Intent.createChooser(i, "Choisir un fichier");
                 }
                 try {
                     startActivityForResult(chooser, REQ_FILE);
@@ -160,6 +168,39 @@ public class MainActivity extends Activity {
 
         handleIntent(getIntent());
         web.loadUrl(START_URL);
+    }
+
+    /** Appareil photo : la photo est enregistrée dans la galerie puis lue par l'app. */
+    private Intent cameraIntent() {
+        cameraUri = null;
+        if (Build.VERSION.SDK_INT >= 23 && Build.VERSION.SDK_INT < 29
+                && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 3);
+            return null;
+        }
+        try {
+            ContentValues v = new ContentValues();
+            v.put(MediaStore.MediaColumns.DISPLAY_NAME, "cours_" + System.currentTimeMillis() + ".jpg");
+            v.put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg");
+            cameraUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+        } catch (Exception e) {
+            return null;
+        }
+        if (cameraUri == null) return null;
+        Intent cam = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        cam.putExtra(MediaStore.EXTRA_OUTPUT, cameraUri);
+        cam.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return cam;
+    }
+
+    private void dropCameraUri() {
+        if (cameraUri != null) {
+            try {
+                getContentResolver().delete(cameraUri, null, null);
+            } catch (Exception ignored) {
+            }
+            cameraUri = null;
+        }
     }
 
     @Override
@@ -200,7 +241,15 @@ public class MainActivity extends Activity {
         if (requestCode == REQ_FILE) {
             if (fileCallback != null) {
                 Uri[] res = null;
-                if (resultCode == RESULT_OK && data != null && data.getData() != null) res = new Uri[]{data.getData()};
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                    res = new Uri[]{data.getData()};
+                    dropCameraUri();
+                } else if (resultCode == RESULT_OK && cameraUri != null) {
+                    res = new Uri[]{cameraUri};
+                    cameraUri = null;
+                } else {
+                    dropCameraUri();
+                }
                 fileCallback.onReceiveValue(res);
                 fileCallback = null;
             }

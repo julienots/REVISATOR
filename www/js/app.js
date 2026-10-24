@@ -1,7 +1,8 @@
 import * as store from "./store.js";
-import { generatePack, gradeOpen, feynmanCheck } from "./nlp.js";
+import { generatePack, gradeOpen, feynmanCheck, answerQuestion, isQuestion, simplify, mnemonic } from "./nlp.js";
 import * as ai from "./ai.js";
 import * as audio from "./audio.js";
+import * as ocr from "./ocr.js";
 import { TEACHERS, MODES } from "./teachers.js";
 
 // Les dépendances lourdes (SDK Claude, pdf.js) sont chargées à la demande.
@@ -158,7 +159,7 @@ function editCourse(c) {
       <div class="sources">
         <p class="muted">Ajoute ton cours depuis :</p>
         <div class="chips">
-          <label class="chip">📄 Fichier / PDF<input type="file" id="file-in" accept=".txt,.md,.pdf,.csv,.html,.htm,text/*,application/pdf" hidden></label>
+          <label class="chip">📄 Fichier / PDF<input type="file" id="file-in" accept=".txt,.md,.pdf,.csv,.html,.htm,text/*,application/pdf,image/*" hidden></label>
           <label class="chip">📷 Photo<input type="file" id="photo-in" accept="image/*" capture="environment" hidden></label>
           <button type="button" class="chip" data-action="dictate">🎤 Dictée</button>
           <button type="button" class="chip" data-action="toggle-video">🎬 Vidéo / audio</button>
@@ -173,11 +174,13 @@ function editCourse(c) {
       <label>Contenu du cours<textarea name="text" rows="12" required placeholder="Colle ici ton cours, tes notes ou la transcription…">${esc(c?.text)}</textarea></label>
       <p class="muted small" id="char-count"></p>
 
-      <fieldset class="gen-choice">
-        <legend>Génération</legend>
-        <label class="radio"><input type="radio" name="engine" value="local" ${ai.hasAI() || S().apiKey ? "" : "checked"}> ⚡ Rapide (hors-ligne)</label>
-        <label class="radio"><input type="radio" name="engine" value="ai" ${S().apiKey ? "checked" : ""} ${S().apiKey ? "" : "disabled"}> ✨ IA Claude ${S().apiKey ? "" : "(ajoute ta clé dans Profil)"}</label>
-      </fieldset>
+      ${
+        S().apiKey
+          ? `<fieldset class="gen-choice"><legend>Génération</legend>
+        <label class="radio"><input type="radio" name="engine" value="local"> ⚡ Sur le téléphone (hors-ligne)</label>
+        <label class="radio"><input type="radio" name="engine" value="ai" checked> ✨ IA Claude</label></fieldset>`
+          : `<input type="hidden" name="engine" value="local">`
+      }
 
       <button class="btn block" type="submit">${c ? "Enregistrer et régénérer" : "Créer mes fiches"}</button>
       ${c ? `<button type="button" class="btn block danger ghost" data-action="delete-course" data-id="${c.id}">Supprimer ce cours</button>` : `<button type="button" class="btn block ghost" data-action="sample">Charger un cours d'exemple</button>`}
@@ -241,20 +244,31 @@ async function importFile(file, ta, form) {
   try {
     if (file.type.startsWith("image/")) {
       await loadVendor();
-      if (!ai.hasAI()) return toast("La lecture de photos nécessite le mode IA (clé dans Profil). Tu peux aussi dicter le cours 🎤.", 5000);
-      modal(`<div class="loading"><div class="spinner"></div><p>Lecture de la photo…</p></div>`);
-      const b64 = await toBase64(file);
-      append(await ai.extractFromFile(b64, file.type === "image/jpg" ? "image/jpeg" : file.type));
+      let text;
+      if (ai.hasAI()) {
+        modal(`<div class="loading"><div class="spinner"></div><p>Lecture de la photo…</p></div>`);
+        try {
+          text = await ai.extractFromFile(await toBase64(file), file.type === "image/jpg" ? "image/jpeg" : file.type);
+        } catch {}
+      }
+      text ||= await ocrWithProgress((p) => ocr.recognize(file, p), "Lecture de la photo");
       closeModal();
-      return toast("Texte extrait de la photo ✔");
+      if (text.replace(/\s/g, "").length < 15) return toast("Je n'arrive pas à lire cette photo. Essaie avec plus de lumière, bien à plat et nette.", 5000);
+      append(text);
+      return toast("Texte lu ✔ Relis-le et corrige si besoin.", 4000);
     }
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
       modal(`<div class="loading"><div class="spinner"></div><p>Lecture du PDF…</p></div>`);
       await loadVendor();
-      let text = await pdfText(await file.arrayBuffer());
-      if (text.replace(/\s/g, "").length < 80 && ai.hasAI()) text = await ai.extractFromFile(await toBase64(file), "application/pdf");
+      const buf = await file.arrayBuffer();
+      let text = await pdfText(buf.slice(0));
+      if (text.replace(/\s/g, "").length < 80) {
+        // PDF scanné : pas de texte, on lit les pages comme des images.
+        if (ai.hasAI()) text = await ai.extractFromFile(await toBase64(file), "application/pdf").catch(() => "");
+        if (text.replace(/\s/g, "").length < 80) text = await ocrWithProgress((p) => ocr.recognizePdf(globalThis.pdfjsLib, buf, p), "Lecture du PDF scanné");
+      }
       closeModal();
-      if (text.replace(/\s/g, "").length < 20) return toast("Ce PDF semble scanné : active le mode IA pour le lire.", 5000);
+      if (text.replace(/\s/g, "").length < 20) return toast("Impossible de lire ce PDF.", 5000);
       append(text);
       return toast("PDF importé ✔");
     }
@@ -266,6 +280,14 @@ async function importFile(file, ta, form) {
     closeModal();
     toast("Import impossible : " + e.message, 5000);
   }
+}
+
+async function ocrWithProgress(run, label) {
+  modal(`<div class="loading"><div class="spinner"></div><p>${label}…</p><div class="bar"><div id="ocr-bar" class="low" style="width:3%"></div></div><p class="muted small">Tout se passe sur ton téléphone, sans Internet. La première lecture prend un peu plus de temps.</p></div>`);
+  return run((p) => {
+    const b = document.getElementById("ocr-bar");
+    if (b) b.style.width = Math.max(3, Math.round(p * 100)) + "%";
+  });
 }
 
 const toBase64 = (file) =>
@@ -366,7 +388,7 @@ function courseTab(c, tab) {
   return `<div class="modes">${items
     .map(([k, route, sub]) => `<button class="mode ${enabled.includes(k) ? "" : "dim"}" data-go="${route}"><span>${MODES[k].emoji}</span><b>${MODES[k].name}</b><small>${sub}</small></button>`)
     .join("")}
-    <button class="mode" data-go="chat/${id}"><span>${teacher().emoji}</span><b>Demander au prof</b><small>${ai.hasAI() || S().apiKey ? "Pose tes questions" : "Questions du prof"}</small></button>
+    <button class="mode" data-go="chat/${id}"><span>${teacher().emoji}</span><b>Demander au prof</b><small>Pose tes questions</small></button>
   </div>`;
 }
 
@@ -722,24 +744,69 @@ routes.chat = (id) => {
   setTitle(t.name);
   c.chat ||= [];
   const aiOn = !!S().apiKey;
+  const hello = `Bonjour ! Je suis ${t.name}. Pose-moi une question sur « ${c.title} » (par exemple « c'est quoi ${c.pack.keywords[0]?.term?.toLowerCase() || "…"} ? »), ou demande-moi de t'interroger.`;
   const renderMsgs = () =>
-    c.chat.map((m) => `<div class="msg ${m.role}">${m.role === "assistant" ? `<span class="who">${t.emoji}</span>` : ""}<div>${esc(m.content).replace(/\n/g, "<br>")}</div></div>`).join("") ||
-    `<div class="msg assistant"><span class="who">${t.emoji}</span><div>${aiOn ? `Bonjour ! Je suis ${esc(t.name)}. Pose-moi une question sur « ${esc(c.title)} », ou demande-moi de t'interroger.` : `Je vais te poser des questions sur le cours, comme à l'oral. (Pour discuter librement avec moi, ajoute une clé IA dans Profil.)`}</div></div>`;
+    [{ role: "assistant", content: hello }, ...c.chat]
+      .map((m) => `<div class="msg ${m.role}">${m.role === "assistant" ? `<span class="who">${t.emoji}</span>` : ""}<div>${esc(m.content).replace(/\n/g, "<br>")}</div></div>`)
+      .join("");
   view.innerHTML = `<div class="chat" id="chat">${renderMsgs()}</div>
-    <form class="chat-in" id="chat-form"><button type="button" class="icon-btn" data-action="dictate-into" data-target="chat-txt">🎤</button><input id="chat-txt" autocomplete="off" placeholder="${aiOn ? "Ta question…" : "Ta réponse…"}"><button class="btn small">Envoyer</button></form>
-    <div class="chips center">${aiOn ? `<button class="chip" data-say="Interroge-moi sur ce cours, une question à la fois.">Interroge-moi</button><button class="chip" data-say="Explique-moi plus simplement la notion la plus difficile.">Explique plus simplement</button><button class="chip" data-say="Donne-moi un moyen mnémotechnique pour retenir l'essentiel.">Astuce mémo</button>` : `<button class="chip" data-action="chat-reset">Nouvelle série</button>`}</div>`;
+
+    <div class="chips center">
+      <button class="chip" data-say="quiz">❓ Interroge-moi</button>
+      <button class="chip" data-say="simple">🧒 Explique plus simplement</button>
+      <button class="chip" data-say="memo">💡 Astuce mémo</button>
+      <button class="chip" data-say="reset">🗑️ Effacer</button>
+    </div>
+    <form class="chat-in" id="chat-form"><button type="button" class="icon-btn" data-action="dictate-into" data-target="chat-txt">🎤</button><input id="chat-txt" autocomplete="off" placeholder="Ta question ou ta réponse…"><button class="btn small">Envoyer</button></form>`;
   const box = $("#chat");
   box.scrollTop = box.scrollHeight;
-
-  let pending = null; // question locale en attente
-  const askLocal = () => {
-    const q = shuffle(c.pack.exam)[0] || shuffle(c.pack.quiz)[0];
-    if (!q) return;
-    pending = q;
-    c.chat.push({ role: "assistant", content: q.q });
+  const refresh = () => {
     store.save();
+    box.innerHTML = renderMsgs();
+    box.scrollTop = box.scrollHeight;
   };
-  if (!aiOn && !c.chat.length) askLocal();
+  const say = (content) => c.chat.push({ role: "assistant", content });
+
+  // Question posée par le prof, en attente de la réponse de l'élève (mode hors-ligne).
+  let pending = null;
+  const askLocal = () => {
+    const q = shuffle([...c.pack.exam, ...c.pack.keywords.map((k) => ({ q: `Que signifie « ${k.term} » ?`, expected: k.def.split(/\s+/).filter((w) => w.length > 4).slice(0, 6), model: k.def }))])[0];
+    if (!q) return say("Ton cours est trop court pour que je t'interroge. Ajoute du contenu !");
+    pending = q;
+    say(q.q);
+  };
+
+  const localReply = (text) => {
+    if (pending && !isQuestion(text)) {
+      const g = gradeOpen(text, pending.expected || []);
+      const good = g.ratio >= 0.5;
+      say(`${good ? t.right() : t.wrong()}${g.missing.length && !good ? `\nIl manquait : ${g.missing.join(", ")}.` : ""}\nRéponse attendue : ${pending.model || ""}`);
+      if (good) store.markMistakeRight(id, pending.q);
+      else store.addMistake({ courseId: id, question: pending.q, correct: pending.model || "", given: text, explain: pending.model || "", qref: { type: "open", q: pending.q, expected: pending.expected || [], model: pending.model } });
+      pending = null;
+      say("On continue ? Touche « Interroge-moi » pour une autre question, ou pose-moi la tienne.");
+      return;
+    }
+    pending = null;
+    const ans = answerQuestion(text, c);
+    if (!ans) {
+      say(`${S().teacher === "socrate" ? "Bonne question… mais" : "Hmm,"} je ne trouve rien sur ça dans ton cours « ${c.title} ». Reformule avec un mot du cours, ou consulte la liste des 🔑 mots-clés.`);
+      return;
+    }
+    const style = {
+      socrate: "\n\nÀ toi : peux-tu me dire avec tes mots pourquoi c'est important ?",
+      feynman: "\n\nMaintenant, essaie de l'expliquer en une phrase simple, comme à un enfant.",
+      coach: "\n\nRetiens ça et on enchaîne ! 💪",
+      drole: "\n\nEt voilà, même mon poisson rouge s'en souviendrait 🐟",
+      exigeant: "\n\nApprends cette formulation exacte.",
+      bienveillant: "\n\nC'est plus clair ? N'hésite pas à me redemander 🌸",
+    }[S().teacher] || "";
+    say(ans.text + style);
+    if (ans.term && ["socrate", "feynman"].includes(S().teacher)) {
+      const k = c.pack.keywords.find((x) => x.term === ans.term);
+      pending = { q: `Redis-moi avec tes mots : « ${ans.term} »`, expected: (k?.def || "").split(/\s+/).filter((w) => w.length > 4).slice(0, 6), model: k?.def || "" };
+    }
+  };
 
   const send = async (text) => {
     if (!text.trim()) return;
@@ -749,21 +816,12 @@ routes.chat = (id) => {
       box.scrollTop = box.scrollHeight;
       await loadVendor();
       try {
-        const reply = await ai.askTeacher(c, c.chat.slice(-20));
-        c.chat.push({ role: "assistant", content: reply });
+        say(await ai.askTeacher(c, c.chat.slice(-20)));
       } catch (e) {
-        c.chat.push({ role: "assistant", content: "⚠️ " + e.message });
+        localReply(text); // pas de réseau : le prof hors-ligne prend le relais
       }
-    } else if (pending) {
-      const g = pending.expected ? gradeOpen(text, pending.expected) : { ratio: 0, missing: [] };
-      const good = g.ratio >= 0.5;
-      c.chat.push({ role: "assistant", content: `${good ? t.right() : t.wrong()}\n${g.missing.length && !good ? "Il manquait : " + g.missing.join(", ") + "\n" : ""}Réponse attendue : ${pending.model || pending.explain || ""}` });
-      if (!good) store.addMistake({ courseId: id, question: pending.q, correct: pending.model || "", given: text, explain: pending.model || "", qref: { type: "open", q: pending.q, expected: pending.expected || [], model: pending.model } });
-      askLocal();
-    }
-    store.save();
-    box.innerHTML = renderMsgs();
-    box.scrollTop = box.scrollHeight;
+    } else localReply(text);
+    refresh();
   };
   $("#chat-form").onsubmit = (e) => {
     e.preventDefault();
@@ -771,14 +829,23 @@ routes.chat = (id) => {
     $("#chat-txt").value = "";
     send(v);
   };
-  view.querySelectorAll("[data-say]").forEach((b) => (b.onclick = () => send(b.dataset.say)));
-  const reset = view.querySelector('[data-action="chat-reset"]');
-  if (reset)
-    reset.onclick = () => {
-      c.chat = [];
-      store.save();
-      routes.chat(id);
-    };
+  view.querySelectorAll("[data-say]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        const k = b.dataset.say;
+        if (k === "reset") {
+          c.chat = [];
+          pending = null;
+          return refresh();
+        }
+        if (aiOn) return send({ quiz: "Interroge-moi sur ce cours, une question à la fois.", simple: "Explique-moi plus simplement la notion la plus difficile.", memo: "Donne-moi un moyen mnémotechnique pour retenir l'essentiel." }[k]);
+        c.chat.push({ role: "user", content: b.textContent.trim() });
+        if (k === "quiz") askLocal();
+        if (k === "simple") say(simplify(c));
+        if (k === "memo") say(c.pack.mnemonics?.length ? c.pack.mnemonics.join("\n") : mnemonic(c));
+        refresh();
+      })
+  );
 };
 
 // ---------------- Pomodoro ----------------
@@ -958,14 +1025,14 @@ routes.settings = () => {
         .map(([k, m]) => `<label class="switch"><input type="checkbox" name="mode" value="${k}" ${s.modes.includes(k) ? "checked" : ""}><span>${m.emoji} <b>${m.name}</b><br><small class="muted">${esc(m.desc)}</small></span></label>`)
         .join("")}</section>
 
-    <section class="card"><h3>✨ Intelligence artificielle (optionnel)</h3>
-      <p class="muted small">Sans clé, Revisator fonctionne entièrement hors-ligne. Avec une clé API Anthropic (console.anthropic.com), Claude génère des fiches et quiz plus riches, lit les photos et PDF scannés, corrige tes examens et répond à tes questions. La clé reste sur ton téléphone.</p>
+    <details class="card"><summary>⚙️ Options avancées : IA en ligne (facultatif)</summary>
+      <p class="muted small"><b>Tu n'en as pas besoin :</b> toutes les fonctions (fiches, quiz, examen blanc, lecture des photos, prof) marchent sans Internet et sans clé. Si un jour tu as une clé API Anthropic (payante), Claude peut rendre les fiches et les corrections encore plus riches. Sinon, laisse vide.</p>
       <label>Clé API<input id="set-key" type="password" value="${esc(s.apiKey)}" placeholder="sk-ant-…" autocomplete="off"></label>
       <label>Modèle<select id="set-model">
         <option value="claude-opus-5-5" ${s.model === "claude-opus-5-5" ? "selected" : ""}>Claude Opus 5.5 (meilleure qualité)</option>
         <option value="claude-sonnet-5-5" ${s.model === "claude-sonnet-5-5" ? "selected" : ""}>Claude Sonnet 5.5 (équilibré)</option>
         <option value="claude-haiku-5-5" ${s.model === "claude-haiku-5-5" ? "selected" : ""}>Claude Haiku 5.5 (rapide et économique)</option>
-      </select></label></section>
+      </select></label></details>
 
     <section class="card"><h3>⏱️ Pomodoro & audio</h3>
       <div class="grid2"><label>Travail (min)<input id="set-work" type="number" min="5" max="90" value="${s.pomodoroWork}"></label><label>Pause (min)<input id="set-break" type="number" min="1" max="30" value="${s.pomodoroBreak}"></label></div>
@@ -974,7 +1041,7 @@ routes.settings = () => {
     <section class="card"><h3>💾 Mes données</h3>
       <div class="actions"><button class="btn ghost" data-action="export">📤 Exporter</button><label class="btn ghost">📥 Importer<input type="file" id="import-in" accept=".json,application/json" hidden></label></div>
       <button class="btn danger ghost block" data-action="reset">Tout effacer</button></section>
-    <p class="muted small center">Revisator 1.0 · fait pour réviser mieux, pas plus.</p>`;
+    <p class="muted small center">Revisator 1.1 · 100 % hors-ligne · fait pour réviser mieux, pas plus.</p>`;
 
   const saveS = () => store.save();
   $("#set-name").onchange = (e) => ((s.name = e.target.value.trim()), saveS());

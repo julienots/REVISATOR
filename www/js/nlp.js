@@ -2,14 +2,16 @@
 // fiche, mots-clés, syntaxes, quiz, examen blanc et script de podcast.
 // Aucune IA requise : heuristiques sur la structure et la fréquence des mots.
 
-const STOP = new Set(
+const BASIC_STOP = new Set(
   (
-    "a à au aux avec ce ces cet cette ceci cela ça dans de des du elle elles en et eux il ils je la le les leur leurs lui ma mais me même mes moi mon ne nos notre nous on ou où par pas pour qu que qui sa se ses son sur ta te tes toi ton tu un une vos votre vous y être est sont était étaient sera seront été avoir ont avait avaient aura auront eu fait faire font plus moins très tout tous toute toutes autre autres comme donc alors aussi ainsi car si sans sous entre vers chez lors dont puis peu peut peuvent doit doivent deux trois quand comment pourquoi chaque celui celle ceux celles certains certaines quelque quelques encore déjà bien après avant depuis pendant selon tandis afin cela leurs ici là non oui c'est n'est qu'il qu'elle l'on d'un d'une lequel laquelle lesquels lesquelles partir grâce cours partie exemple ensemble manière façon permet permettent utilise utilisent nécessite déroule produit chose même mettre faut fait doit avant après celui " +
+    "a à au aux avec ce ces cet cette ceci cela ça dans de des du elle elles en et eux il ils je la le les leur leurs lui ma mais me même mes moi mon ne nos notre nous on ou où par pas pour qu que qui sa se ses son sur ta te tes toi ton tu un une vos votre vous y être est sont était étaient sera seront été avoir ont avait avaient aura auront eu fait faire font plus moins très tout tous toute toutes autre autres comme donc alors aussi ainsi car si sans sous entre vers chez lors dont puis peu peut peuvent doit doivent deux trois quand comment pourquoi chaque celui celle ceux celles certains certaines quelque quelques encore déjà bien après avant depuis pendant selon tandis afin cela leurs ici là non oui c'est n'est qu'il qu'elle l'on d'un d'une lequel laquelle lesquels lesquelles partir grâce même faut fait doit avant après celui " +
     "the of and to in is are was were be been for on with as by at from that this these those it its an or not but which can will has have had their there they them into than also such may more most other some any each been being about over only"
   )
     .split(/\s+/)
     .filter(Boolean)
 );
+// Mots trop génériques pour être des notions clés (mais utiles pour comprendre une question).
+const STOP = new Set([...BASIC_STOP, ..."cours partie exemple ensemble manière façon permet permettent utilise utilisent nécessite déroule produit chose mettre".split(" ")]);
 
 export const norm = (s) =>
   s
@@ -23,6 +25,7 @@ const stem = (w) => norm(w).replace(/(ements?|ations?|ment|ions?|eurs?|euses?|it
 const words = (s) => (s.match(/[\p{L}][\p{L}\p{N}'’-]*/gu) || []).map((w) => w.replace(/^[ldjmtsnc]['’]/i, ""));
 
 const contentWords = (s) => words(s).filter((w) => w.length > 2 && !STOP.has(norm(w)));
+const qaWords = (s) => words(s).filter((w) => w.length > 2 && !BASIC_STOP.has(norm(w)));
 
 let counter = 0;
 const id = () => "g" + Date.now().toString(36) + (counter++).toString(36);
@@ -302,7 +305,7 @@ export function generatePack(text, title = "ce cours") {
   const syntaxes = extractSyntaxes(sections);
 
   const kwCards = [
-    ...defs.map((d) => ({ id: id(), term: d.term, def: d.def })),
+    ...defs.map((d) => ({ id: id(), term: d.term, def: d.def, kind: "def" })),
     ...keywords
       .slice(0, Math.max(4, 14 - defs.length))
       .map((k) => ({ id: id(), term: cap(k), def: sentenceFor(k, sections) }))
@@ -325,7 +328,8 @@ export function generatePack(text, title = "ce cours") {
   const summary = ranked.slice(0, 3).map((r) => r.s).join(" ");
   const podcast = buildPodcast(title, fiche, kwCards, retenir);
 
-  return { source: "local", createdAt: Date.now(), summary, fiche, keywords: kwCards, syntaxes, retenir, dates, quiz, exam, podcast };
+  const mnemonics = kwCards.length >= 3 ? [mnemonic({ pack: { keywords: kwCards } })] : [];
+  return { source: "local", createdAt: Date.now(), summary, fiche, keywords: kwCards, syntaxes, retenir, dates, mnemonics, quiz, exam, podcast };
 }
 
 function buildPodcast(title, fiche, cards, retenir) {
@@ -366,4 +370,96 @@ export function feynmanCheck(explanation, pack) {
   const wordsCount = explanation.trim().split(/\s+/).filter(Boolean).length;
   const avgLen = wordsCount ? explanation.replace(/\s+/g, "").length / wordsCount : 0;
   return { covered, missing, ratio: terms.length ? covered.length / terms.length : 0, simple: avgLen < 6.5 };
+}
+
+// ---------- Prof hors-ligne ----------
+// Répond à une question de l'élève en cherchant les passages les plus proches dans le cours.
+
+const QUESTION_RE = /\?\s*$|^(c'est quoi|qu'est[- ]ce|que |quel|quelle|quels|quelles|comment|pourquoi|quand|où|qui |combien|explique|définis|definis|donne|dis[- ]moi|peux[- ]tu|est[- ]ce|what|why|how|when|who)/i;
+export const isQuestion = (s) => QUESTION_RE.test(norm(s).trim());
+
+// Deux mots désignent-ils la même notion ? (pluriel, accord, dérivés proches)
+function sameWord(a, b) {
+  const x = norm(a).replace(/(es|s|x|e)$/, "");
+  const y = norm(b).replace(/(es|s|x|e)$/, "");
+  if (x === y) return true;
+  const n = Math.min(x.length, y.length);
+  if (n < 5) return false;
+  const k = Math.max(5, n - 2);
+  return x.slice(0, k) === y.slice(0, k);
+}
+
+const DEFINITIONAL = /(c'est quoi|c'?est quoi|qu'?est[- ]ce que|qu'?est[- ]ce qu|defini|que signifie|que veut dire|ca veut dire|c'?est qui|qui est|what is|meaning)/;
+const IGNORE = /^(quand|lieu|quoi|expliqu|defini|signifi|veut|dire|pourquoi|comment|donne|cours|faut|quel|quelle|peux|est-ce|sais)/;
+
+export function answerQuestion(question, course) {
+  const pack = course.pack;
+  const sections = parse(course.text);
+  const nq = norm(question).replace(/\bc\s+est\b/g, "c'est");
+  const qWords = qaWords(question).filter((w) => !IGNORE.test(norm(w)));
+  if (!qWords.length) return null;
+  const matches = (ws) => qWords.reduce((a, q) => a + (ws.some((w) => norm(w) === norm(q)) ? 1 : ws.some((w) => sameWord(q, w)) ? 0.8 : 0), 0);
+
+  // 1. Mot-clé dont tous les mots figurent dans la question : on donne sa définition.
+  const card = pack.keywords
+    .map((k) => ({ k, words: contentWords(k.term) }))
+    .filter((x) => x.words.length && x.words.every((w) => qWords.some((q) => sameWord(q, w))))
+    .sort((a, b) => b.words.length - a.words.length)[0]?.k;
+  const isDef = card && card.kind !== "sentence" && !/[.!?]$/.test(card.def.trim());
+
+  // 2. Passages du cours qui partagent le plus de mots avec la question.
+  //    Une phrase qui commence par un pronom (« Elle produit… ») hérite du sujet de la précédente.
+  const why = /pourquoi|comment|why|how/.test(nq);
+  const scored = [];
+  sections.forEach((sec) =>
+    sec.sentences.forEach((s, i) => {
+      const prev = i > 0 && /^(elle|il|ils|elles|cela|ceci|celle-ci|celui-ci|it|they|this)\b/i.test(s) ? sec.sentences[i - 1] : null;
+      const hit = matches(qaWords(prev ? prev + " " + s : s));
+      if (!hit) return;
+      const score = hit / qWords.length + (why && /(car|parce|donc|permet|grâce|afin)/i.test(s) ? 0.3 : 0) - s.length / 2000;
+      scored.push({ s: prev ? `${prev} ${s}` : s, sec: sec.title, score });
+    })
+  );
+  scored.sort((a, b) => b.score - a.score);
+  const passages = [];
+  for (const x of scored) {
+    if (passages.length >= 2 || x.score < 0.45) break;
+    if (isDef && norm(x.s).includes(norm(card.def))) continue;
+    if (passages.some((p) => p.s.includes(x.s) || x.s.includes(p.s))) continue;
+    passages.push(x);
+  }
+  if (!card && !passages.length) return null;
+
+  const def = isDef ? `« ${card.term} » : ${card.def.replace(/[.\s]+$/, "")}.` : null;
+  const parts = [];
+  if (def && (DEFINITIONAL.test(nq) || !passages.length)) {
+    parts.push(def);
+    if (passages.length) parts.push("Dans ton cours, on lit aussi :", ...passages.map((p) => "• " + p.s));
+  } else if (passages.length) {
+    parts.push(`D'après ton cours (partie « ${passages[0].sec} ») :`, ...passages.map((p) => "• " + p.s));
+    if (def) parts.push("Rappel : " + def);
+  } else parts.push(card.def);
+  return { text: parts.join("\n"), term: card?.term || null };
+}
+
+// Version « plus simple » : phrases courtes de la fiche, sans incises.
+export function simplify(course) {
+  const sec = course.pack.fiche[Math.floor(Math.random() * course.pack.fiche.length)];
+  if (!sec) return "Ton cours est déjà très court 🙂";
+  const short = sec.points.map((p) =>
+    p
+      .replace(/\([^)]*\)/g, "")
+      .replace(/,[^,]{25,}?,/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+  return `On reprend « ${sec.title} » en version simple :\n` + short.map((s, i) => `${i + 1}. ${s}`).join("\n");
+}
+
+// Moyen mnémotechnique : acronyme formé des initiales des notions clés d'une partie.
+export function mnemonic(course) {
+  const terms = [...new Set(course.pack.keywords.map((k) => k.term).filter((t) => /^\p{L}/u.test(t)))].slice(0, 5);
+  if (terms.length < 2) return "Astuce : relis la fiche à voix haute, puis récite-la sans regarder. Recommence demain : la répétition espacée fait le reste !";
+  const initials = terms.map((t) => t[0].toUpperCase()).join("");
+  return `Retiens le mot « ${initials} » :\n${terms.map((t) => `• ${t[0].toUpperCase()} comme ${t}`).join("\n")}\nInvente une phrase drôle avec ces initiales, elle restera gravée !`;
 }

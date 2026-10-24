@@ -12,12 +12,13 @@ Application Android de révision : à partir de tes cours (texte, PDF, photo, di
 
 | | |
 |---|---|
-| 📥 **Importer un cours** | Coller du texte, fichier `.txt`/`.md`/`.html`, **PDF**, **photo** (mode IA), **dictée vocale**, lien + transcription de **vidéo / podcast**, ou « Partager vers Revisator » depuis une autre app |
+| 📥 **Importer un cours** | Coller du texte, fichier `.txt`/`.md`/`.html`, **PDF** (même scanné), **photo** du cahier ou du manuel (lecture sur le téléphone), **dictée vocale**, lien + transcription de **vidéo / podcast**, ou « Partager vers Revisator » depuis une autre app |
 | 📋 **Fiche de révision** | Résumé, points clés par partie, définitions, formules, dates et chiffres, « À retenir absolument » ; partageable |
 | 🔑 **Mots-clés** | Terme + définition, en flashcards avec **répétition espacée** (boîtes de Leitner) |
 | 🧮 **Syntaxes** | Formules, équations et code détectés automatiquement |
 | ❓ **Quiz** | QCM, vrai/faux, textes à trous, avec explication de chaque réponse |
 | 📝 **Examen blanc** | Questions ouvertes + QCM, chronomètre, **note sur 20** et liste de **ce qui n'est pas compris** |
+| 🧑‍🏫 **Demander au prof** | Pose tes questions (« c'est quoi… ? », « pourquoi… ? ») : le prof répond à partir de ton cours, t'interroge, simplifie, donne des astuces mémo |
 | 🧠 **Technique Feynman** | Tu expliques le cours avec tes mots, l'app repère les notions oubliées |
 | 🎧 **Podcast** | La fiche lue à voix haute (voix Android), vitesse réglable, musique de fond |
 | 🧑‍🏫 **Choisir son prof** | Mme Douce (bienveillante), M. Rigueur (exigeant), Socrate (questionne), Prof Feynman (simplifie), Coach Max (motive), M. Blagues (humour) — ou pas de prof. Chaque prof a son ton et sa méthode conseillée |
@@ -28,20 +29,22 @@ Application Android de révision : à partir de tes cours (texte, PDF, photo, di
 | 📊 **Progression** | **Pourcentage d'acquisition** par cours et global (flashcards + quiz + examen), série de jours |
 | 💾 **Données** | Tout reste sur le téléphone ; export / import de sauvegarde |
 
-### Deux moteurs de génération
+### 100 % hors-ligne, sans clé ni compte
 
-- **⚡ Hors-ligne (par défaut)** : analyse du texte (titres, définitions du type « X : … », « X est … », « On appelle X … », mots-clés fréquents, formules) — gratuit, instantané, sans compte.
-- **✨ IA Claude (optionnel)** : ajoute ta clé API Anthropic dans *Profil*. Claude produit des fiches et quiz plus riches, des moyens mnémotechniques, lit les photos et PDF scannés, corrige tes examens comme un vrai prof et répond à tes questions dans « Demander au prof ». La clé est stockée uniquement sur ton téléphone.
+Tout fonctionne directement sur le téléphone, sans Internet : analyse du cours (titres, définitions du type « X : … », « X est … », « On appelle X … », mots-clés, formules), lecture des photos et PDF scannés (OCR Tesseract embarqué, français et anglais), correction des examens, prof qui répond aux questions.
+
+*Option avancée, facultative :* une clé API Anthropic peut être ajoutée dans *Profil › Options avancées* pour des fiches et corrections rédigées par Claude. Sans clé, rien ne manque.
 
 ## 🛠️ Développement
 
 ```
 www/                  application (HTML/CSS/JS, sans framework)
   js/nlp.js           générateur hors-ligne (fiches, quiz, examen, correction)
-  js/ai.js            mode IA (SDK Claude)
+  js/ocr.js           lecture des photos / PDF scannés (Tesseract, hors-ligne)
+  js/ai.js            option IA en ligne (SDK Claude), facultative
   js/audio.js         musiques génératives, synthèse et dictée vocales
   js/teachers.js      personnalités de profs et modes d'apprentissage
-  vendor/vendor.js    SDK Claude + pdf.js empaquetés (tools/vendor)
+  vendor/             pdf.js, SDK Claude, Tesseract + données fra/eng (tools/vendor)
 android/              coque native (WebView + pont voix/dictée/partage)
 build-apk.sh          construit dist/Revisator.apk
 ```
