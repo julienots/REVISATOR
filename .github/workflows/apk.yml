@@ -1,0 +1,22 @@
+name: Construire l'APK
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Outils Android
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aapt dalvik-exchange apksigner zipalign android-sdk-platform-23 openjdk-17-jdk-headless
+      - name: Construire
+        run: ./build-apk.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Revisator-apk
+          path: dist/Revisator.apk

@@ -1,0 +1,14 @@
+{
+  "name": "revisator-vendor",
+  "version": "1.0.0",
+  "description": "Empaquette le SDK Claude et pdf.js dans www/vendor/vendor.js",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=esm --target=chrome90 --minify --outfile=../../www/vendor/vendor.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "esbuild": "^0.24.2",
+    "pdfjs-dist": "^4.10.38"
+  },
+  "private": true
+}

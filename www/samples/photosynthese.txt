@@ -1,0 +1,18 @@
+La photosynthèse
+
+I. Définition
+La photosynthèse est le processus par lequel les végétaux chlorophylliens produisent de la matière organique à partir de lumière, d'eau et de dioxyde de carbone.
+On appelle chlorophylle le pigment vert qui capte l'énergie lumineuse.
+Chloroplaste : organite de la cellule végétale où se déroule la photosynthèse.
+
+II. Les deux phases
+La phase claire se déroule dans les thylakoïdes et nécessite de la lumière. Elle produit de l'ATP et libère du dioxygène.
+La phase sombre, ou cycle de Calvin, se déroule dans le stroma. Elle utilise l'ATP pour fixer le CO2 et fabriquer du glucose.
+Le cycle de Calvin a été découvert en 1950 par Melvin Calvin.
+
+III. Équation bilan
+6 CO2 + 6 H2O → C6H12O6 + 6 O2
+Il est important de retenir que la photosynthèse est la source de presque tout le dioxygène de l'atmosphère.
+
+IV. Facteurs limitants
+L'intensité lumineuse, la température et la concentration en CO2 influencent la vitesse de la photosynthèse. Au-delà de 40 degrés, les enzymes sont dénaturées donc la photosynthèse s'arrête.

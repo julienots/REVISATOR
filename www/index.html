@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#4f46e5">
+  <title>Revisator</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="btn-back" aria-label="Retour" hidden>&#8592;</button>
+    <h1 id="page-title">Revisator</h1>
+    <button class="icon-btn" id="btn-music" aria-label="Musique de concentration">&#9835;</button>
+  </header>
+
+  <main id="view" tabindex="-1"></main>
+
+  <div id="music-panel" class="sheet" hidden></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="modal" class="modal" hidden><div class="modal-card" id="modal-card"></div></div>
+
+  <nav class="tabbar">
+    <button data-route="home" class="tab"><span>&#8962;</span>Accueil</button>
+    <button data-route="courses" class="tab"><span>&#128214;</span>Cours</button>
+    <button data-route="review" class="tab"><span>&#9889;</span>Réviser</button>
+    <button data-route="mistakes" class="tab"><span>&#10060;</span>Erreurs</button>
+    <button data-route="settings" class="tab"><span>&#9881;</span>Profil</button>
+  </nav>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

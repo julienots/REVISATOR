@@ -1,0 +1,87 @@
+// Personnalités de prof : ton des retours, méthode privilégiée, consigne pour l'IA.
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+export const TEACHERS = {
+  aucun: {
+    name: "Pas de prof",
+    emoji: "📝",
+    desc: "Mode neutre : juste les réponses, sans commentaire.",
+    method: null,
+    prompt: "Ton neutre et concis.",
+    right: () => "Correct.",
+    wrong: () => "Incorrect.",
+    end: (p) => `Score : ${p} %.`,
+  },
+  bienveillant: {
+    name: "Mme Douce",
+    emoji: "🌸",
+    desc: "Bienveillante et patiente, elle encourage et reformule.",
+    method: "flashcards",
+    prompt: "Tu es bienveillant, encourageant, tu valorises les progrès et tu reformules simplement.",
+    right: () => pick(["Bravo, c'est exactement ça !", "Super, tu progresses !", "Très bien, continue comme ça 🌸"]),
+    wrong: () => pick(["Pas grave, c'est en se trompant qu'on apprend.", "Presque ! Relis l'explication tranquillement.", "On va revoir ça ensemble, tu vas y arriver."]),
+    end: (p) => (p >= 70 ? `Magnifique, ${p} % ! Je suis fière de toi.` : `${p} %, c'est un début. On retravaille tes erreurs et ça va monter !`),
+  },
+  exigeant: {
+    name: "M. Rigueur",
+    emoji: "🎓",
+    desc: "Exigeant, précis, note sévèrement comme au vrai contrôle.",
+    method: "exam",
+    prompt: "Tu es exigeant et rigoureux, tu attends un vocabulaire précis, tu notes sévèrement mais justement.",
+    right: () => pick(["Correct. Suivante.", "Juste. Je veux la même précision partout.", "Bien. C'est le minimum attendu."]),
+    wrong: () => pick(["Faux. Apprends ta leçon.", "Non. Le vocabulaire exact compte.", "Erreur. Elle doit être corrigée avant le contrôle."]),
+    end: (p) => (p >= 80 ? `${p} %. Acceptable.` : `${p} %. Insuffisant, il faut retravailler sérieusement.`),
+  },
+  socrate: {
+    name: "Socrate",
+    emoji: "🏛️",
+    desc: "Pose des questions pour te faire trouver la réponse toi-même.",
+    method: "feynman",
+    prompt: "Tu utilises la méthode socratique : tu poses des questions qui guident l'élève vers la réponse plutôt que de la donner directement.",
+    right: () => pick(["Bien. Mais sais-tu pourquoi c'est vrai ?", "Juste. Pourrais-tu l'expliquer à un camarade ?"]),
+    wrong: () => pick(["Hum… qu'est-ce qui t'a mené à cette réponse ?", "Et si tu relisais la question : que demande-t-elle vraiment ?"]),
+    end: (p) => `${p} %. La seule chose que je sais, c'est que tu peux encore apprendre.`,
+  },
+  feynman: {
+    name: "Prof Feynman",
+    emoji: "🔬",
+    desc: "Si tu ne sais pas l'expliquer simplement, tu ne l'as pas compris.",
+    method: "feynman",
+    prompt: "Tu appliques la technique Feynman : tout expliquer avec des mots simples et des analogies du quotidien.",
+    right: () => pick(["Exact ! Maintenant explique-le à un enfant de 10 ans.", "Oui ! Tu pourrais trouver une analogie ?"]),
+    wrong: () => pick(["Pas tout à fait. Essaie de reformuler avec des mots simples.", "Non — cherche l'idée de base, sans jargon."]),
+    end: (p) => `${p} %. Passe à l'exercice Feynman pour vérifier que tu comprends vraiment.`,
+  },
+  coach: {
+    name: "Coach Max",
+    emoji: "💪",
+    desc: "Énergique, défis, chrono et motivation façon sport.",
+    method: "pomodoro",
+    prompt: "Tu es un coach sportif énergique, tu motives avec des défis, tu es direct et positif.",
+    right: () => pick(["BOOM ! Point marqué 💪", "Yes ! On enchaîne !", "Champion ! Encore une !"]),
+    wrong: () => pick(["Allez, on se relève ! Regarde la correction.", "Raté, mais un champion apprend de chaque chute !"]),
+    end: (p) => (p >= 70 ? `${p} % ! Record à battre la prochaine fois 🔥` : `${p} %. Échauffement terminé, maintenant on s'entraîne pour de vrai !`),
+  },
+  drole: {
+    name: "M. Blagues",
+    emoji: "🤡",
+    desc: "Apprend en rigolant avec des blagues et des moyens mnémotechniques.",
+    method: "quiz",
+    prompt: "Tu es drôle, tu glisses des blagues légères et des moyens mnémotechniques amusants, sans sacrifier l'exactitude.",
+    right: () => pick(["Bonne réponse ! Même mon chat n'aurait pas fait mieux 🐱", "Juste ! Tu mérites une frite 🍟"]),
+    wrong: () => pick(["Aïe ! Même mon GPS se perd moins 😅", "Raté ! Mais bon, Einstein aussi s'est trompé… parfois."]),
+    end: (p) => `${p} % ! ${p >= 70 ? "Tu es une légende 😎" : "On rigole, mais on révise encore un peu 😉"}`,
+  },
+};
+
+// Modes d'apprentissage proposés, avec la technique pédagogique associée.
+export const MODES = {
+  flashcards: { name: "Flashcards", emoji: "🃏", desc: "Rappel actif : tu essaies de te souvenir avant de retourner la carte." },
+  spaced: { name: "Répétition espacée", emoji: "📅", desc: "Les cartes reviennent juste avant que tu les oublies (boîtes de Leitner)." },
+  quiz: { name: "Quiz", emoji: "❓", desc: "QCM, vrai/faux et textes à trous pour tester tes connaissances." },
+  exam: { name: "Examen blanc", emoji: "📝", desc: "Questions ouvertes notées sur 20 avec diagnostic de ce qui n'est pas compris." },
+  feynman: { name: "Technique Feynman", emoji: "🧠", desc: "Explique le cours avec tes mots ; l'app repère les notions oubliées." },
+  pomodoro: { name: "Pomodoro", emoji: "🍅", desc: "25 min de travail concentré, 5 min de pause, avec musique." },
+  podcast: { name: "Podcast audio", emoji: "🎧", desc: "Écoute ta fiche lue à voix haute, idéal dans les transports." },
+  mistakes: { name: "Carnet d'erreurs", emoji: "❌", desc: "Retravaille uniquement ce que tu as raté jusqu'à ce que ce soit acquis." },
+};
